@@ -3,6 +3,7 @@
  * 仅在 Node.js 运行时使用。
  */
 import type { Browser, Page } from "puppeteer-core"
+import { existsSync } from "node:fs"
 import type { ResumeData } from "@/types/resume"
 import { AUTH_COOKIE, authCookieValue, getSitePassword } from "@/lib/auth"
 import {
@@ -140,28 +141,83 @@ export function resolveTrustedOrigin(req: Request): string {
 // 浏览器启动与渲染
 // ---------------------------------------------------------------------------
 
+/** 按平台列出常见的 Chrome / Edge / Chromium 安装位置 */
+function systemChromeCandidates(): string[] {
+  if (process.platform === "win32") {
+    const roots = [process.env.PROGRAMFILES, process.env["PROGRAMFILES(X86)"], process.env.LOCALAPPDATA].filter(
+      (v): v is string => !!v
+    )
+    return roots.flatMap((root) => [
+      `${root}\\Google\\Chrome\\Application\\chrome.exe`,
+      `${root}\\Microsoft\\Edge\\Application\\msedge.exe`,
+      `${root}\\Chromium\\Application\\chrome.exe`,
+    ])
+  }
+  if (process.platform === "darwin") {
+    return [
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    ]
+  }
+  return [
+    "/usr/bin/google-chrome",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/microsoft-edge",
+    "/snap/bin/chromium",
+  ]
+}
+
+interface ResolvedBrowser {
+  executablePath: string
+  bundled: boolean
+}
+
+/**
+ * 解析可用的浏览器：
+ * 1. 环境变量 PUPPETEER_EXECUTABLE_PATH / CHROME_PATH 显式指定；
+ * 2. Linux 上优先使用 @sparticuz/chromium 内置的 headless shell（Serverless 场景）；
+ * 3. 其他平台（或内置不可用时）自动探测本机安装的 Chrome / Edge。
+ */
+async function resolveBrowser(chromium: typeof import("@sparticuz/chromium").default): Promise<ResolvedBrowser> {
+  const envPath = (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || "").trim()
+  if (envPath) return { executablePath: envPath, bundled: false }
+
+  if (process.platform === "linux") {
+    try {
+      const bundledPath = await chromium.executablePath()
+      if (bundledPath && existsSync(bundledPath)) return { executablePath: bundledPath, bundled: true }
+    } catch {
+      /* 内置二进制不可用，继续探测系统浏览器 */
+    }
+  }
+
+  const found = systemChromeCandidates().find((candidate) => existsSync(candidate))
+  if (found) return { executablePath: found, bundled: false }
+
+  throw new PdfError(
+    "未找到可用的 Chrome / Edge。请安装 Chrome，或通过 PUPPETEER_EXECUTABLE_PATH 指定浏览器路径",
+    503
+  )
+}
+
 export async function launchBrowser(): Promise<Browser> {
   const [{ default: chromium }, { default: puppeteer }] = await Promise.all([
     import("@sparticuz/chromium"),
     import("puppeteer-core"),
   ])
 
-  const envPath = (process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_PATH || "").trim()
-  const executablePath = envPath || (await chromium.executablePath())
-  if (!executablePath) {
-    throw new PdfError("未找到 Chromium 可执行文件，可通过 PUPPETEER_EXECUTABLE_PATH 指定", 503)
-  }
-
-  const usingSystemChrome = !!envPath
+  const { executablePath, bundled } = await resolveBrowser(chromium)
   return puppeteer.launch({
-    args: usingSystemChrome
-      ? ["--headless=new", "--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage"]
-      : chromium.args,
+    args: bundled
+      ? chromium.args
+      : ["--headless=new", "--disable-gpu", "--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none"],
     defaultViewport: { width: 1200, height: 1600, deviceScaleFactor: 2 },
     executablePath,
-    // @sparticuz/chromium 自 v123 起不再导出 headless 属性；其内置二进制是 chrome-headless-shell，
-    // args 中已带 --headless='shell'，这里显式对应；系统 Chrome 则使用新版无头模式
-    headless: usingSystemChrome ? true : "shell",
+    // 内置二进制是 chrome-headless-shell，args 中已带 --headless='shell'；系统浏览器使用新版无头模式
+    headless: bundled ? "shell" : true,
   })
 }
 
@@ -177,10 +233,15 @@ async function inlineAvatar(avatar: string): Promise<string | undefined> {
 }
 
 async function waitForResumeReady(page: Page) {
+  // /print 页按 A4 分页卡片渲染；优先等待卡片填充完成，退而求其次等待任意简历内容
   try {
-    await page.waitForSelector(".resume-content, .pdf-preview-mode", { timeout: 20_000 })
+    await page.waitForSelector(".resume-page .resume-content", { timeout: 20_000 })
   } catch {
-    await sleep(500)
+    try {
+      await page.waitForSelector(".resume-content", { timeout: 5_000 })
+    } catch {
+      await sleep(500)
+    }
   }
   try {
     await page.waitForNetworkIdle({ idleTime: 300, timeout: 10_000 })
@@ -190,7 +251,7 @@ async function waitForResumeReady(page: Page) {
   try {
     await page.waitForFunction(
       () => {
-        const root = document.querySelector(".resume-content")
+        const root = document.querySelector(".resume-page .resume-content") ?? document.querySelector(".resume-content")
         if (!root) return false
         return !!root.querySelector(".ProseMirror, .resume-module p, .resume-module li, .resume-module a, .resume-module span")
       },
@@ -206,6 +267,8 @@ async function waitForResumeReady(page: Page) {
   } catch {
     /* 字体就绪失败不影响输出 */
   }
+  // 字体就绪后分页可能重新测量，留一帧让卡片刷新
+  await sleep(150)
 }
 
 async function printWithRetry(page: Page): Promise<Uint8Array> {

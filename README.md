@@ -179,19 +179,17 @@ export interface ResumeData {
 ### PDF 导出（服务端优先，自动降级）
 
 - 服务端优先：`POST /api/pdf` 使用 `puppeteer-core + @sparticuz/chromium` 打开`/print`，通过`sessionStorage`传入数据，设置`displayHeaderFooter:false`、`printBackground:true`、`preferCSSPageSize:true`，返回干净的`application/pdf`（inline）。
-- 降级体验：若服务端不可用或失败，自动使用浏览器打印（所见即所得），界面会提示：
-  - 关闭“页眉和页脚”
-  - 勾选“背景图形”
+- 降级体验：若服务端不可用或失败，自动使用浏览器打印（所见即所得）。打印页直接输出分页卡片且页边距为 0，浏览器不会附带页眉页脚，只需在打印对话框中勾选“背景图形”。
 
 环境变量（可选）
 - `NEXT_PUBLIC_FORCE_SERVER_PDF=true` 强制使用服务端 PDF
 - `NEXT_PUBLIC_FORCE_PRINT=true` 强制使用浏览器打印
-- `PUPPETEER_EXECUTABLE_PATH=/path/to/chrome` 或 `CHROME_PATH=/path/to/chrome` 指定系统 Chrome 可执行文件（在某些平台上更稳定）
+- `PUPPETEER_EXECUTABLE_PATH=/path/to/chrome` 或 `CHROME_PATH=/path/to/chrome` 显式指定浏览器。未指定时：Linux 优先使用内置的 `@sparticuz/chromium`，Windows / macOS 自动探测本机安装的 Chrome 或 Edge
 - `SITE_URL=https://your-domain.com` 无头浏览器渲染时访问的站点地址；自托管且启用了 `SITE_PASSWORD` 时建议显式配置，避免依赖请求头推导
 - `PDF_MAX_CONCURRENT=2` 同时运行的无头浏览器数量上限，`PDF_MAX_QUEUE=8` 等待队列长度，超出返回 503
 
 说明
-- 打印与 PDF 每页四周统一留白 10mm，与屏幕上的分页预览一致。浏览器打印降级时如出现页眉页脚，请在打印对话框中关闭；服务端生成的 PDF 不含页眉页脚。
+- 打印与 PDF 均按 A4 分页卡片输出，每页四周留白 10mm，与屏幕预览一致；页边距为 0，因此浏览器打印也不会出现页眉页脚。
 - 启用 `SITE_PASSWORD` 后，`/api/pdf/*` 与 `/api/image-proxy` 同样需要认证，未登录返回 401。
 
 接口说明

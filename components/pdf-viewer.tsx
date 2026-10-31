@@ -240,7 +240,7 @@ export function PDFViewer({
             ) : (
               <span>服务器不可用，已切换为浏览器打印。</span>
             )}
-            <span className="ml-2 text-foreground">请在打印对话框中：关闭“页眉和页脚”，勾选“背景图形”。</span>
+            <span className="ml-2 text-foreground">请在打印对话框中勾选“背景图形”，边距保持“默认”。</span>
             <button
               onClick={() => {
                 try {
@@ -285,7 +285,7 @@ export function PDFDownloadLink({
     try {
       const available = FORCE_PRINT ? false : await checkServerPdfAvailable();
       if (!available) {
-        alert("服务器生成不可用，请使用“打印/保存为 PDF”，并在对话框中关闭页眉页脚、勾选背景图形。");
+        alert("服务器生成不可用，请使用“打印/保存为 PDF”，并在对话框中勾选背景图形。");
         return;
       }
       const blob = await generateServerPdf(normalized);

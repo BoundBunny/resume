@@ -30,7 +30,7 @@ const PAGE_CONTENT_HEIGHT_PX = PAGE_CONTENT_HEIGHT_MM * MM_TO_PX
  *
  * 实现方式：离屏渲染一份真实 A4 宽度的简历作为测量源，算出每页起点后，
  * 为每一页克隆一份内容放进固定高度的取景窗并向上平移，裁出该页应显示的部分。
- * 容器不够宽时整体等比缩小。打印时隐藏卡片、恢复测量源为正常文档流。
+ * 容器不够宽时整体等比缩小。打印时卡片即打印页：取消缩放，每张卡片恰好一页。
  */
 export default function ResumePreviewPaginated({ resumeData, className }: ResumePreviewPaginatedProps) {
   const hostRef = useRef<HTMLDivElement | null>(null)
@@ -102,14 +102,14 @@ export default function ResumePreviewPaginated({ resumeData, className }: Resume
 
   return (
     <div ref={hostRef} className={`paginated-preview relative w-full${className ? ` ${className}` : ""}`}>
-      {/* 测量源：屏幕上移出视口，打印时恢复为正常文档流 */}
+      {/* 测量源：固定定位移出视口且不可见，屏幕与打印下都不参与版面 */}
       <div ref={sourceRef} className="paginated-source pdf-preview-mode" aria-hidden="true">
         {sourceNode}
       </div>
 
-      <div className="paginated-pages flex justify-center print:hidden" style={{ height: stackHeightPx * scale }}>
-        <div style={{ width: PAGE_WIDTH_PX * scale, height: stackHeightPx * scale }}>
-          <div style={{ width: PAGE_WIDTH_PX, transform: `scale(${scale})`, transformOrigin: "top left" }}>
+      <div className="paginated-pages flex justify-center" style={{ height: stackHeightPx * scale }}>
+        <div className="paginated-stack" style={{ width: PAGE_WIDTH_PX * scale, height: stackHeightPx * scale }}>
+          <div className="paginated-scale" style={{ width: PAGE_WIDTH_PX, transform: `scale(${scale})`, transformOrigin: "top left" }}>
             {Array.from({ length: pageCount }, (_, index) => (
               <div
                 key={index}
@@ -130,7 +130,7 @@ export default function ResumePreviewPaginated({ resumeData, className }: Resume
                   className="pdf-preview-mode"
                   style={{ height: PAGE_CONTENT_HEIGHT_PX, overflow: "hidden", position: "relative" }}
                 />
-                <span className="absolute bottom-2 right-4 select-none text-[11px] text-muted-foreground/70">
+                <span className="no-print absolute bottom-2 right-4 select-none text-[11px] text-muted-foreground/70">
                   {index + 1} / {pageCount}
                 </span>
               </div>

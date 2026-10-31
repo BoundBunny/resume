@@ -187,7 +187,7 @@
   }
 }
 
-/* Robust print fallbacks live in global CSS to guarantee inclusion in prod */
+/* 打印样式集中在 styles/print.css；这里只保留最基础的兜底 */
 @media print {
 
   html,
@@ -197,78 +197,8 @@
     background: #fff !important;
   }
 
-  /* Never print chrome/headers/toolbars */
   .no-print {
     display: none !important;
-  }
-
-  /* Remove fixed heights/scrolls from preview containers */
-  .pdf-preview-page-root,
-  .pdf-preview-page-root .h-screen,
-  .pdf-preview-page-root .min-h-screen,
-  .pdf-preview-page-root .overflow-hidden,
-  .pdf-preview-page-root .flex-1,
-  .pdf-fallback-container,
-  .pdf-fallback-container .pdf-preview-mode {
-    height: auto !important;
-    overflow: visible !important;
-  }
-
-  /* Ensure the resume page prints clean; margins come from @page */
-  .pdf-preview-mode .resume-content {
-    width: auto !important;
-    max-width: none !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-shadow: none !important;
-    border: none !important;
-    background: #fff !important;
-  }
-
-  /* 分页预览：打印时隐藏页面卡片，把离屏的测量源恢复为正常文档流 */
-  .paginated-pages {
-    display: none !important;
-  }
-
-  .paginated-source {
-    position: static !important;
-    left: auto !important;
-    top: auto !important;
-    width: auto !important;
-    visibility: visible !important;
-    pointer-events: auto !important;
-  }
-
-  /* Typography fallbacks: keep spacing consistent in headless Chromium */
-  body {
-    /* unify font with app's local font to avoid metric drift */
-    font-family: var(--font-noto-sans), system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Noto Sans", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif !important;
-    line-height: 1.55 !important;
-    font-size: 11pt !important;
-    color: #000 !important;
-  }
-
-  .resume-content .ProseMirror>p {
-    margin: 0 0 5pt 0 !important;
-    line-height: 1.6 !important;
-  }
-
-  /* 顶层列表块：给予外边距，参与与段落的上下间距计算 */
-  .resume-content .ProseMirror>ul,
-  .resume-content .ProseMirror>ol {
-    margin: 0 0 5pt 0 !important;
-  }
-
-  /* 列表项：仅为非最后一项设置项内间距，避免与列表块 margin 叠加导致段后过大 */
-  .resume-content .ProseMirror li:not(:last-child) {
-    margin-bottom: 5pt !important;
-    line-height: 1.6 !important;
-  }
-
-  /* 每页四周统一留白 10mm，与 styles/print.css 及屏幕分页预览保持一致 */
-  @page {
-    size: A4;
-    margin: 10mm;
   }
 }
 
