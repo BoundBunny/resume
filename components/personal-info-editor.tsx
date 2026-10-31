@@ -1,6 +1,6 @@
 ﻿"use client";
 /* eslint-disable @next/next/no-img-element */
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,7 +33,7 @@ import { Icon } from "@iconify/react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import type { DraggableProvidedDragHandleProps } from "@hello-pangea/dnd";
 import type { PersonalInfoItem, PersonalInfoSection, PersonalInfoLayout } from "@/types/resume";
-import { createNewPersonalInfoItem } from "@/lib/utils";
+import { createNewPersonalInfoItem, sanitizeSvgIcon } from "@/lib/utils";
 import IconPicker from "./icon-picker";
 
 interface PersonalInfoEditorProps {
@@ -156,23 +156,6 @@ export default function PersonalInfoEditor({
   };
 
 
-
-  useEffect(() => {
-    if (!avatar) return;
-    // avatarUrl is derived from props; no local setState
-  }, [avatar]);
-
-  useEffect(() => {
-    // 同步 personalInfoSection 的变化，更新本地状态
-    if (personalInfoSection) {
-      // showLabels derived from props
-
-      // 更新layout状态
-      if (personalInfoSection.layout) {
-        // layout derived from props
-      }
-    }
-  }, [personalInfoSection]);
 
   /**
    * 处理文件上传
@@ -386,7 +369,7 @@ export default function PersonalInfoEditor({
           <Droppable droppableId="personal-info-list">
             {(provided) => (
               <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3">
-                {personalInfo
+                {[...personalInfo]
                   .sort((a, b) => a.order - b.order)
                   .map((item, index) => (
                     <Draggable key={item.id} draggableId={item.id} index={index}>
@@ -472,7 +455,7 @@ function PersonalInfoItemEditor({
                 height={16}
                 viewBox="0 0 24 24"
                 className="text-muted-foreground"
-                dangerouslySetInnerHTML={{ __html: item.icon }}
+                dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(item.icon) }}
               />
             )}
           </Button>

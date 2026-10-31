@@ -1,18 +1,26 @@
 "use client"
 
-import { use, useMemo } from "react"
+import { use, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Icon } from "@iconify/react"
 import type { StoredResume } from "@/types/resume"
-import { getResumeById } from "@/lib/storage"
-import ResumePreview from "@/components/resume-preview"
+import { tryGetResumeById } from "@/lib/storage"
+import ResumePreviewPaginated from "@/components/resume-preview-paginated"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 export default function ViewPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const entry = useMemo<StoredResume | null>(() => getResumeById(id), [id])
+
+  // localStorage 只能在浏览器中读取：水合完成后再展示，避免服务端渲染阶段抛错
+  const hydrated = useHydrated()
+  const [entry] = useState<StoredResume | null>(() => tryGetResumeById(id))
+
+  if (!hydrated) {
+    return <main className="min-h-screen bg-background" />
+  }
 
   if (!entry) {
     return (
@@ -40,7 +48,7 @@ export default function ViewPage({ params }: { params: Promise<{ id: string }> }
       <Separator />
       <div className="p-4">
         <div className="preview-panel w-full">
-          <ResumePreview resumeData={entry.resumeData} />
+          <ResumePreviewPaginated resumeData={entry.resumeData} />
         </div>
       </div>
     </main>

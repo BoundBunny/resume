@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ResumeData } from "@/types/resume";
 import { generatePdfFilename } from "@/lib/utils";
-import ResumePreview from "./resume-preview";
+import ResumePreviewPaginated from "./resume-preview-paginated";
 import PdfLoading from "@/components/pdf-loading";
 
 
@@ -260,7 +260,7 @@ export function PDFViewer({
         </div>
       )}
       <div className="pdf-preview-mode">
-        <ResumePreview resumeData={normalizedResumeData} />
+        <ResumePreviewPaginated resumeData={normalizedResumeData} />
       </div>
     </div>
   );

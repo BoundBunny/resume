@@ -82,19 +82,9 @@ export interface JobIntentionSection {
   enabled: boolean
 }
 
-// Tiptap JSON Content 类型（从 @tiptap/core 导入）
-export interface JSONContent {
-  type?: string
-  attrs?: Record<string, any>
-  content?: JSONContent[]
-  marks?: {
-    type: string
-    attrs?: Record<string, any>
-    [key: string]: any
-  }[]
-  text?: string
-  [key: string]: any
-}
+// Tiptap JSON Content 类型：直接复用 @tiptap/core 的定义，避免本地副本与编辑器实际类型不一致
+import type { JSONContent } from "@tiptap/core"
+export type { JSONContent }
 
 // 内容元素 - 一行中的一列（使用 Tiptap JSON 格式）
 export interface ModuleContentElement {
@@ -132,6 +122,10 @@ export interface ResumeModule {
   icon?: string
   /** 模块顺序 */
   order: number
+  /** 导出与打印时从新的一页开始 */
+  pageBreakBefore?: boolean
+  /** 不跨页拆分，整个模块保持在同一页 */
+  keepTogether?: boolean
   /** 模块内容（由多行组成） */
   rows: ModuleContentRow[]
 }

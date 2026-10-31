@@ -4,6 +4,7 @@
 import { useLayoutEffect, useRef, useState } from "react"
 import { Icon } from "@iconify/react"
 import type { ResumeData } from "@/types/resume"
+import { sanitizeHref, sanitizeSvgIcon } from "@/lib/utils"
 import RichTextRenderer from "./rich-text-renderer"
 
 interface ResumePreviewProps {
@@ -280,15 +281,15 @@ export default function ResumePreview({ resumeData }: ResumePreviewProps) {
                         className="resume-icon w-[1em] h-[1em] shrink-0"
                         fill="black"
                         viewBox="0 0 24 24"
-                        dangerouslySetInnerHTML={{ __html: item.icon }}
+                        dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(item.icon) }}
                       />
                     )}
                     {resumeData.personalInfoSection?.showPersonalInfoLabels !== false && (
                       <span className="text-sm leading-none text-muted-foreground shrink-0">{item.label}{'：'}</span>
                     )}
-                    {item.value.type === "link" && item.value.content ? (
+                    {item.value.type === "link" && sanitizeHref(item.value.content) ? (
                       <a
-                        href={item.value.content}
+                        href={sanitizeHref(item.value.content)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className={`text-sm leading-none text-blue-600 hover:text-blue-800 hover:underline ${isAsciiOnly(item.value.title || item.value.content) ? 'font-latin' : ''}`}
@@ -333,15 +334,15 @@ export default function ResumePreview({ resumeData }: ResumePreviewProps) {
                           className="resume-icon w-[1em] h-[1em] flex-shrink-0"
                           fill="black"
                           viewBox="0 0 24 24"
-                          dangerouslySetInnerHTML={{ __html: item.icon }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(item.icon) }}
                         />
                       )}
                       {resumeData.personalInfoSection?.showPersonalInfoLabels !== false && (
                         <span className="text-sm leading-none text-muted-foreground flex-shrink-0">{item.label}{'：'}</span>
                       )}
-                      {item.value.type === "link" && item.value.content ? (
+                      {item.value.type === "link" && sanitizeHref(item.value.content) ? (
                         <a
-                          href={item.value.content}
+                          href={sanitizeHref(item.value.content)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={`text-sm leading-none text-blue-600 hover:text-blue-800 hover:underline ${isAsciiOnly(item.value.title || item.value.content) ? 'font-latin' : ''}`}
@@ -371,15 +372,15 @@ export default function ResumePreview({ resumeData }: ResumePreviewProps) {
                       className="resume-icon w-[1em] h-[1em] shrink-0"
                       fill="black"
                       viewBox="0 0 24 24"
-                      dangerouslySetInnerHTML={{ __html: item.icon }}
+                      dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(item.icon) }}
                     />
                   )}
                   {resumeData.personalInfoSection?.showPersonalInfoLabels !== false && (
                     <span className="text-sm leading-none text-muted-foreground shrink-0">{item.label}{'：'}</span>
                   )}
-                  {item.value.type === "link" && item.value.content ? (
+                  {item.value.type === "link" && sanitizeHref(item.value.content) ? (
                     <a
-                      href={item.value.content}
+                      href={sanitizeHref(item.value.content)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`text-sm leading-none text-blue-600 hover:text-blue-800 hover:underline ${isAsciiOnly(item.value.title || item.value.content) ? 'font-latin' : ''}`}
@@ -418,15 +419,15 @@ export default function ResumePreview({ resumeData }: ResumePreviewProps) {
                           className="resume-icon w-[1em] h-[1em] flex-shrink-0"
                           fill="black"
                           viewBox="0 0 24 24"
-                          dangerouslySetInnerHTML={{ __html: item.icon }}
+                          dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(item.icon) }}
                         />
                       )}
                       {resumeData.personalInfoSection?.showPersonalInfoLabels !== false && (
                         <span className="text-sm leading-none text-muted-foreground flex-shrink-0">{item.label}{'：'}</span>
                       )}
-                      {item.value.type === "link" && item.value.content ? (
+                      {item.value.type === "link" && sanitizeHref(item.value.content) ? (
                         <a
-                          href={item.value.content}
+                          href={sanitizeHref(item.value.content)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className={`text-sm leading-none text-blue-600 hover:text-blue-800 hover:underline ${isAsciiOnly(item.value.title || item.value.content) ? 'font-latin' : ''}`}
@@ -462,17 +463,22 @@ export default function ResumePreview({ resumeData }: ResumePreviewProps) {
 
       {/* 简历模块 */}
       <div className="space-y-6">
-        {resumeData.modules
+        {[...resumeData.modules]
           .sort((a, b) => a.order - b.order)
           .map((module) => (
-            <div key={module.id} className="resume-module">
+            <div
+              key={module.id}
+              className={`resume-module${module.pageBreakBefore ? " page-break-before" : ""}${module.keepTogether ? " keep-together" : ""}`}
+              data-page-break-before={module.pageBreakBefore ? "1" : "0"}
+              data-keep-together={module.keepTogether ? "1" : "0"}
+            >
               <div className="module-title text-lg font-semibold text-foreground border-b border-border pb-2 mb-3 flex items-center gap-2">
                 {module.icon && (
                   <svg
                     width={20}
                     height={20}
                     viewBox="0 0 24 24"
-                    dangerouslySetInnerHTML={{ __html: module.icon }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(module.icon) }}
                   />
                 )}
                 {module.title}
@@ -480,7 +486,7 @@ export default function ResumePreview({ resumeData }: ResumePreviewProps) {
 
               <div className="space-y-[0.3em]">
                 {/* 渲染行 */}
-                {module.rows
+                {[...module.rows]
                   .sort((a, b) => a.order - b.order)
                   .map((row) => (
                     row.type === 'tags' ? (

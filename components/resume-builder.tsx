@@ -12,7 +12,7 @@ import { Icon } from "@iconify/react"
 import type { ResumeData, EditorState } from "@/types/resume"
 import { createDefaultResumeData } from "@/lib/utils"
 import { loadDefaultTemplate, loadExampleTemplate } from "@/lib/storage"
-import ResumePreview from "./resume-preview"
+import ResumePreviewPaginated from "./resume-preview-paginated"
 import PersonalInfoEditor from "./personal-info-editor"
 import JobIntentionEditor from "./job-intention-editor"
 import ModuleEditor from "./module-editor"
@@ -220,7 +220,7 @@ export default function ResumeBuilder({ initialData, template = "default", onCha
         {/* 预览面板 */}
         {(viewMode === "both" || viewMode === "preview-only") && (
           <div className={`preview-panel ${viewMode === "preview-only" ? "w-full" : ""}`}>
-            <ResumePreview resumeData={editorState.resumeData} />
+            <ResumePreviewPaginated resumeData={editorState.resumeData} />
           </div>
         )}
       </div>

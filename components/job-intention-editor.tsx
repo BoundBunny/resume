@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -47,11 +47,6 @@ export default function JobIntentionEditor({
 }: JobIntentionEditorProps) {
   const enabled = jobIntentionSection?.enabled ?? true;
   const items = jobIntentionSection?.items || [];
-
-  // 同步外部 enabled 变化到本地状态，确保预览与编辑一致
-  useEffect(() => {
-    // enabled synchronized via props
-  }, [jobIntentionSection?.enabled]);
 
   /**
    * 处理拖拽排序结束事件
@@ -205,7 +200,7 @@ export default function JobIntentionEditor({
           <Droppable droppableId="job-intention-list">
             {(provided) => (
               <div ref={provided.innerRef} {...provided.droppableProps} className="space-y-3">
-                {items
+                {[...items]
                   .sort((a, b) => a.order - b.order)
                   .map((item, index) => (
                     <Draggable key={item.id} draggableId={item.id} index={index}>

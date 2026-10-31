@@ -1,6 +1,8 @@
 ﻿# 简历生成器
 > ⭐⭐⭐ **如果这个项目对您有帮助，请给个小星星！** 您的支持是我持续改进和添加新功能的动力。
 
+> **致谢**：本项目基于 [wzdnzd/resume](https://github.com/wzdnzd/resume) 二次开发，核心功能与设计均来自原作者，特此感谢。本仓库在其基础上增加了 A4 分页预览、模块级分页控制、多页图片导出，并修复了若干安全与稳定性问题。
+
 一个灵活且功能强大的简历构建和导出工具，帮助用户快速创建、编辑和导出干净、简洁而又专业的简历，支持所见即所得。数据存储在浏览器，本地保存与管理简历更放心。
 
 ## 功能特点
@@ -16,9 +18,9 @@
 - **自适应**: 支持不同模块/布局自由组合，自动调整元素尺寸
 
 <p align="left">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fwzdnzd%2Fresume&env=SITE_PASSWORD&project-name=resume&repository-name=resume" target="_blank" rel="noopener noreferrer"><img src="https://vercel.com/button" alt="Vercel" height="30"></a>
+  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FBoundBunny%2Fresume&env=SITE_PASSWORD&project-name=resume&repository-name=resume" target="_blank" rel="noopener noreferrer"><img src="https://vercel.com/button" alt="Vercel" height="30"></a>
   &nbsp;
-  <a href="https://edgeone.ai/pages/new?repository-url=https%3A%2F%2Fgithub.com%2Fwzdnzd%2Fresume&env=SITE_PASSWORD&project-name=resume&repository-name=resume" target="_blank" rel="noopener noreferrer"><img src="https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg" alt="EdgeOne Pages" height="30"></a>
+  <a href="https://edgeone.ai/pages/new?repository-url=https%3A%2F%2Fgithub.com%2FBoundBunny%2Fresume&env=SITE_PASSWORD&project-name=resume&repository-name=resume" target="_blank" rel="noopener noreferrer"><img src="https://cdnstatic.tencentcs.com/edgeone/pages/deploy.svg" alt="EdgeOne Pages" height="30"></a>
 </p>
 
 ## 页面示例截图
@@ -167,6 +169,13 @@ export interface ResumeData {
 
 支持多种类型的简历模块，如教育背景、工作经历、项目经验等。每个模块可以包含标题、图标、和详细内容。
 
+### 分页
+
+- 编辑页右侧预览、仅预览页和 PDF 预览都按 A4 真实分页展示：每页一张白纸、页间留灰色间隔、右下角标页码，随内容实时更新
+- 每个模块可单独设置"从新一页开始"和"不跨页拆分"，设置随简历数据一起保存
+- PDF 导出按上述设置分页；图片导出（PNG/JPG/WEBP/SVG）使用同一套分页规则，多页时每页一张图片，打包为一个 ZIP，文件名以 `-P1`、`-P2` 结尾
+- 预览使用真实 A4 宽度排版，容器不够宽时整体等比缩小；浏览器自身的分页规则在极端情况下可能与预览相差一行
+
 ### PDF 导出（服务端优先，自动降级）
 
 - 服务端优先：`POST /api/pdf` 使用 `puppeteer-core + @sparticuz/chromium` 打开`/print`，通过`sessionStorage`传入数据，设置`displayHeaderFooter:false`、`printBackground:true`、`preferCSSPageSize:true`，返回干净的`application/pdf`（inline）。
@@ -178,6 +187,12 @@ export interface ResumeData {
 - `NEXT_PUBLIC_FORCE_SERVER_PDF=true` 强制使用服务端 PDF
 - `NEXT_PUBLIC_FORCE_PRINT=true` 强制使用浏览器打印
 - `PUPPETEER_EXECUTABLE_PATH=/path/to/chrome` 或 `CHROME_PATH=/path/to/chrome` 指定系统 Chrome 可执行文件（在某些平台上更稳定）
+- `SITE_URL=https://your-domain.com` 无头浏览器渲染时访问的站点地址；自托管且启用了 `SITE_PASSWORD` 时建议显式配置，避免依赖请求头推导
+- `PDF_MAX_CONCURRENT=2` 同时运行的无头浏览器数量上限，`PDF_MAX_QUEUE=8` 等待队列长度，超出返回 503
+
+说明
+- 打印与 PDF 每页四周统一留白 10mm，与屏幕上的分页预览一致。浏览器打印降级时如出现页眉页脚，请在打印对话框中关闭；服务端生成的 PDF 不含页眉页脚。
+- 启用 `SITE_PASSWORD` 后，`/api/pdf/*` 与 `/api/image-proxy` 同样需要认证，未登录返回 401。
 
 接口说明
 - `GET /api/pdf/health`：健康检查，验证 headless 启动能力
@@ -218,7 +233,7 @@ SITE_PASSWORD=你的访问密码
 
 说明：
 - 我们不会在 Cookie 中保存明文密码，而是保存其 SHA-256 摘要；
-- 中间件只对页面路由生效，不拦截 `/_next/*`、`/favicon.ico`、`/robots.txt` 以及认证相关路径 `/auth`、`/api/auth`；
+- 中间件对页面路由与 `/api/pdf/*`、`/api/image-proxy` 生效，不拦截 `/_next/*`、`/favicon.ico`、`/robots.txt` 以及认证相关路径 `/auth`、`/api/auth`；
 - 如需关闭认证，删除或清空 `SITE_PASSWORD` 即可。
 
 ## TODO

@@ -1,21 +1,24 @@
 "use client"
 
-import { use, useMemo, useState } from "react"
+import { use, useState } from "react"
 import { useRouter } from "next/navigation"
 import ResumeBuilder from "@/components/resume-builder"
 import { Button } from "@/components/ui/button"
 import { Icon } from "@iconify/react"
 import type { ResumeData, StoredResume } from "@/types/resume"
-import { getResumeById, updateEntryData, StorageError } from "@/lib/storage"
+import { tryGetResumeById, updateEntryData, StorageError } from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 export default function EditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const { toast } = useToast()
-  const [, setCurrentData] = useState<ResumeData | null>(null)
 
-  const entry = useMemo<StoredResume | null>(() => getResumeById(id), [id])
+  // localStorage 只能在浏览器中读取：服务端得到 null，客户端首帧也先渲染空壳，
+  // 水合完成后再展示，避免直接打开或刷新时报错或标记不一致
+  const hydrated = useHydrated()
+  const [entry] = useState<StoredResume | null>(() => tryGetResumeById(id))
 
   const handleSave = async (data: ResumeData) => {
     try {
@@ -35,6 +38,10 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
     }
   }
 
+  if (!hydrated) {
+    return <main className="min-h-screen bg-background" />
+  }
+
   if (!entry) {
     return (
       <main className="min-h-screen bg-background p-6">
@@ -52,7 +59,6 @@ export default function EditPage({ params }: { params: Promise<{ id: string }> }
     <main className="min-h-screen bg-background">
       <ResumeBuilder
         initialData={entry.resumeData}
-        onChange={setCurrentData}
         onBack={() => router.push("/")}
         onSave={(data) => handleSave(data)}
       />

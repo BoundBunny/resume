@@ -68,6 +68,38 @@ export function getResumeById(id: string): StoredResume | null {
   return readAll().find((r) => r.id === id) || null
 }
 
+/** 供 useState 惰性初始化使用：服务端或读取失败时返回 null，不抛错 */
+export function tryGetResumeById(id: string): StoredResume | null {
+  if (typeof window === "undefined") return null
+  try {
+    return getResumeById(id)
+  } catch {
+    return null
+  }
+}
+
+/** 用户中心预加载新建简历数据时使用的 sessionStorage 键 */
+export const NEW_RESUME_PREFETCH_KEY = "new-edit-initial-data"
+
+/**
+ * 新建页的初始数据：优先克隆指定条目，其次使用用户中心预加载的数据。
+ * 仅在浏览器中读取；服务端返回 undefined。
+ */
+export function readNewResumeInitialData(cloneId: string | null): ResumeData | undefined {
+  if (typeof window === "undefined") return undefined
+  if (cloneId) {
+    const entry = tryGetResumeById(cloneId)
+    if (entry) return { ...entry.resumeData }
+  }
+  try {
+    const raw = window.sessionStorage.getItem(NEW_RESUME_PREFETCH_KEY)
+    if (raw) return JSON.parse(raw) as ResumeData
+  } catch {
+    /* ignore */
+  }
+  return undefined
+}
+
 export function upsertResume(entry: StoredResume): StoredResume {
   const list = readAll()
   const idx = list.findIndex((r) => r.id === entry.id)

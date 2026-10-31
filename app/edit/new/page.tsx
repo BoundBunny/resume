@@ -1,11 +1,17 @@
 "use client"
 
-import { Suspense, useMemo } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import ResumeBuilder from "@/components/resume-builder"
 import type { ResumeData } from "@/types/resume"
-import { createEntryFromData, StorageError, getResumeById } from "@/lib/storage"
+import {
+  createEntryFromData,
+  NEW_RESUME_PREFETCH_KEY,
+  readNewResumeInitialData,
+  StorageError,
+} from "@/lib/storage"
 import { useToast } from "@/hooks/use-toast"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 export default function NewEditPage() {
   // 包裹 Suspense 以满足 useSearchParams 的要求，fallback 为空避免“加载中...”
@@ -24,27 +30,19 @@ function NewEditPageContent() {
   const cloneId = search.get("clone")
   const useExample = search.get("example") === "1" || search.get("example") === "true"
 
-  // 从 sessionStorage 恢复用户中心预加载的数据
-  const prefetchedData: ResumeData | undefined = useMemo(() => {
-    if (typeof window === "undefined") return undefined
+  // 克隆数据与预加载数据都来自浏览器存储：服务端得到 undefined，
+  // 客户端在水合渲染时一次性读取，水合完成后再挂载编辑器，避免标记不一致
+  const hydrated = useHydrated()
+  const [initialData] = useState<ResumeData | undefined>(() => readNewResumeInitialData(cloneId))
+
+  // 预加载数据只消费一次，避免下次新建时复用旧数据
+  useEffect(() => {
     try {
-      const raw = sessionStorage.getItem("new-edit-initial-data")
-      if (!raw) return undefined
-      const parsed = JSON.parse(raw) as ResumeData
-      sessionStorage.removeItem("new-edit-initial-data")
-      return parsed
+      sessionStorage.removeItem(NEW_RESUME_PREFETCH_KEY)
     } catch {
-      return undefined
+      /* ignore */
     }
   }, [])
-
-  // 同步派生克隆数据；在 SSR 阶段返回 undefined，客户端首帧即可拿到
-  const clonedData: ResumeData | undefined = useMemo(() => {
-    if (!cloneId) return undefined
-    if (typeof window === "undefined") return undefined
-    const entry = getResumeById(cloneId)
-    return entry ? { ...entry.resumeData } : undefined
-  }, [cloneId])
 
   const handleSave = async (current: ResumeData) => {
     try {
@@ -65,11 +63,14 @@ function NewEditPageContent() {
     }
   }
 
+  if (!hydrated) {
+    return <main className="min-h-screen bg-background" />
+  }
+
   return (
     <main className="min-h-screen bg-background">
       <ResumeBuilder
-        // 优先使用：克隆数据 > 预加载数据
-        initialData={clonedData ?? prefetchedData}
+        initialData={initialData}
         template={useExample ? "example" : "default"}
         onBack={() => router.push("/")}
         onSave={(d) => handleSave(d)}

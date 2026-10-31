@@ -214,7 +214,7 @@
     overflow: visible !important;
   }
 
-  /* Ensure the resume page prints clean */
+  /* Ensure the resume page prints clean; margins come from @page */
   .pdf-preview-mode .resume-content {
     width: auto !important;
     max-width: none !important;
@@ -223,6 +223,20 @@
     box-shadow: none !important;
     border: none !important;
     background: #fff !important;
+  }
+
+  /* 分页预览：打印时隐藏页面卡片，把离屏的测量源恢复为正常文档流 */
+  .paginated-pages {
+    display: none !important;
+  }
+
+  .paginated-source {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
   }
 
   /* Typography fallbacks: keep spacing consistent in headless Chromium */
@@ -251,9 +265,10 @@
     line-height: 1.6 !important;
   }
 
+  /* 每页四周统一留白 10mm，与 styles/print.css 及屏幕分页预览保持一致 */
   @page {
     size: A4;
-    margin: 1cm;
+    margin: 10mm;
   }
 }
 
@@ -276,7 +291,18 @@
   }
 
   .preview-panel {
-    @apply bg-muted/30 overflow-y-auto;
+    @apply bg-muted/30 overflow-y-auto p-4;
+  }
+
+  /* 分页预览的离屏测量源：保持真实 A4 宽度，固定定位且不可见，
+     既不参与滚动区域计算，也不会在卡片下方留出空白 */
+  .paginated-source {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    width: 210mm;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .resume-preview {

@@ -6,13 +6,25 @@ import { Icon } from "@iconify/react";
 import type { ResumeData } from "@/types/resume";
 import { generatePdfFilename, exportToMagicyanFile, downloadFile, cn } from "@/lib/utils";
 import {
+  MM_TO_PX,
+  PAGE_CONTENT_HEIGHT_MM,
+  PAGE_HEIGHT_MM,
+  PAGE_MARGIN_MM,
+  measurePagination,
+  mountPageClone,
+  type MeasuredPagination,
+} from "@/lib/pagination";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
+import { createZip, type ZipEntry } from "@/lib/zip";
 import type { Options as HtmlToImageOptions } from "html-to-image/lib/types";
+
+type ImageFormat = "png" | "jpg" | "webp" | "svg";
 
 interface ExportButtonProps {
   resumeData: ResumeData;
@@ -20,6 +32,21 @@ interface ExportButtonProps {
   size?: "default" | "sm" | "lg" | "icon";
   className?: string;
   showImageOptions?: boolean; // 在没有预览面板时可关闭图片导出
+}
+
+// 1x1 透明像素：图片加载失败时占位，避免抛错
+const IMAGE_PLACEHOLDER =
+  "data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+
+/**
+ * 移出视口但保持正常渲染。注意不能用 opacity/visibility 隐藏：
+ * html-to-image 会把这些样式一起复制进输出，导致导出图片是空白的。
+ */
+function hideOffscreen(el: HTMLElement) {
+  el.style.position = "fixed";
+  el.style.left = "-10000px";
+  el.style.top = "0";
+  el.style.pointerEvents = "none";
 }
 
 export function ExportButton({
@@ -32,21 +59,14 @@ export function ExportButton({
   const [isExporting, setIsExporting] = useState(false);
   const { toast } = useToast();
 
-  // 在当前页面查找可用于导出的预览节点；若不存在则临时渲染一个离屏预览
-  const ensurePreviewForExport = async (): Promise<{ sourceEl: HTMLElement; cleanup: () => void }> => {
-    const existing = document.querySelector(".resume-preview") as HTMLElement | null;
-    if (existing) {
-      return { sourceEl: existing, cleanup: () => { } };
-    }
-
-    // 动态挂载一个离屏预览以支持图片导出
+  /**
+   * 总是离屏渲染一份 A4 版面（.pdf-preview-mode）用于导出，
+   * 保证无论从哪个页面触发，图片几何都与 PDF 一致。
+   */
+  const renderOffscreenPreview = async (): Promise<{ sourceEl: HTMLElement; cleanup: () => void }> => {
     const host = document.createElement("div");
-    host.style.position = "fixed";
-    host.style.left = "-10000px";
-    host.style.top = "-10000px";
-    host.style.opacity = "0";
-    host.style.pointerEvents = "none";
-    host.className = "pdf-preview-mode"; // 采用 PDF 预览尺寸，导出清晰
+    hideOffscreen(host);
+    host.className = "pdf-preview-mode";
     document.body.appendChild(host);
 
     const [{ createRoot }, { default: ResumePreview }] = await Promise.all([
@@ -59,7 +79,7 @@ export function ExportButton({
 
     // 等待渲染与布局生效
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 30)));
-    const source = host.querySelector(".resume-preview") as HTMLElement | null;
+    const source = host.querySelector<HTMLElement>(".resume-preview");
     if (!source) {
       root.unmount();
       host.remove();
@@ -68,179 +88,41 @@ export function ExportButton({
 
     const cleanup = () => {
       try { root.unmount(); } catch { }
-      if (host.parentNode) host.parentNode.removeChild(host);
+      host.remove();
     };
     return { sourceEl: source, cleanup };
   };
 
-  const exportAsImage = async (format: "png" | "jpg" | "webp" | "svg") => {
-    setIsExporting(true);
-
-    try {
-      const { sourceEl: resumeElement, cleanup: cleanupPreview } = await ensurePreviewForExport();
-
-      // 为了避免跨域图片导致的画布污染，导出时使用克隆节点，并将远程图片通过同源代理加载
-      const { nodeForExport, cleanup } = await prepareNodeForExport(resumeElement);
-      try {
-        if (format === "svg") {
-          await exportAsSVG(nodeForExport);
-          return;
-        }
-
-        // 动态导入 html-to-image
-        const htmlToImage = await import("html-to-image");
-
-        // 根据格式选择对应的方法
-        let dataUrl: string;
-        const options: HtmlToImageOptions = {
-          quality: format === "jpg" ? 0.95 : 1,
-          pixelRatio: 2, // 提高清晰度
-          backgroundColor: "#ffffff",
-          cacheBust: true,
-          imagePlaceholder:
-            // 1x1 透明像素，若有图片加载失败用于占位，避免抛错
-            "data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
-          // 关闭字体内嵌，避免 html-to-image 在解析字体时对 undefined 调用 trim 抛错
-          skipFonts: true,
-        };
-
-        switch (format) {
-          case "png":
-            dataUrl = await htmlToImage.toPng(nodeForExport, options);
-            break;
-          case "jpg":
-            dataUrl = await htmlToImage.toJpeg(nodeForExport, options);
-            break;
-          case "webp":
-            // html-to-image 没有直接的 toWebp 方法，使用 toBlob 然后转换
-            const blob = await htmlToImage.toBlob(nodeForExport, options);
-            if (!blob) throw new Error("生成 WEBP 失败");
-            // 浏览器支持 canvas 转 webp：将 PNG/JPEG Blob 转换为 webp
-            // 若不支持，将保留原始 blob 类型
-            const webpUrl = await convertBlobToFormat(blob, "image/webp");
-            dataUrl = webpUrl ?? URL.createObjectURL(blob);
-            break;
-          default:
-            throw new Error("不支持的格式");
-        }
-
-        // 下载图片
-        const link = document.createElement("a");
-        link.href = dataUrl;
-        link.download = generatePdfFilename(resumeData.title).replace(
-          ".pdf",
-          `.${format}`
-        );
-        link.click();
-
-        // 清理 URL（如果是 blob URL）
-        if (dataUrl.startsWith("blob:")) {
-          URL.revokeObjectURL(dataUrl);
-        }
-      } finally {
-        // 移除导出时创建的克隆节点
-        cleanup();
-        // 若使用了离屏预览，进行清理
-        cleanupPreview();
-      }
-
-      toast({
-        title: "导出成功",
-        description: `简历已导出为 ${format.toUpperCase()} 格式`,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : JSON.stringify(e || {});
-      console.error("导出图片失败:", msg);
-      toast({
-        title: "导出失败",
-        description: `导出图片时发生错误：${msg}`,
-        variant: "destructive",
-      });
-    } finally {
-      setIsExporting(false);
-    }
-  };
-
-  const exportAsSVG = async (element: HTMLElement) => {
-    try {
-      // 使用 html-to-image 的 toSvg 方法
-      const htmlToImage = await import("html-to-image");
-
-      const dataUrl = await htmlToImage.toSvg(element, {
-        backgroundColor: "#ffffff",
-        pixelRatio: 2,
-        cacheBust: true,
-        imagePlaceholder:
-          "data:image/gif;base64,R0lGODlhAQABAIABAP///wAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==",
-        // 同样关闭 SVG 导出时的字体内嵌，绕过 html-to-image 的字体解析 bug
-        skipFonts: true,
-      } as HtmlToImageOptions);
-
-      // 下载 SVG
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = generatePdfFilename(resumeData.title).replace(
-        ".pdf",
-        ".svg"
-      );
-      link.click();
-
-      toast({
-        title: "导出成功",
-        description: "简历已导出为 SVG 格式",
-      });
-    } catch (error) {
-      console.error("导出 SVG 失败:", error);
-      throw error;
-    }
-  };
-
-  // 将节点克隆到离屏容器，并将潜在的跨域图片改为通过同源代理加载
+  /** 克隆到离屏容器，并把跨域图片改为同源代理加载，避免画布污染 */
   async function prepareNodeForExport(source: HTMLElement): Promise<{ nodeForExport: HTMLElement; cleanup: () => void }> {
     const clone = source.cloneNode(true) as HTMLElement;
     const container = document.createElement("div");
-    container.style.position = "fixed";
-    container.style.left = "-10000px";
-    container.style.top = "-10000px";
-    container.style.opacity = "0";
-    container.style.pointerEvents = "none";
-    // 固定宽高，避免在离屏容器内发生重排导致尺寸变化
+    hideOffscreen(container);
+    // 与源节点保持相同的 A4 样式上下文，避免克隆后内边距变化导致重排
+    container.className = "pdf-preview-mode";
     const rect = source.getBoundingClientRect();
     clone.style.width = `${rect.width}px`;
     clone.style.height = `${rect.height}px`;
+    clone.style.margin = "0";
     container.appendChild(clone);
     document.body.appendChild(container);
 
     const imgs = Array.from(clone.querySelectorAll<HTMLImageElement>("img"));
-    const originalSrc: Array<{ el: HTMLImageElement; src: string }> = [];
-
     const sameOrigin = (url: string) => {
       try {
-        const u = new URL(url, window.location.href);
-        return u.origin === window.location.origin;
+        return new URL(url, window.location.href).origin === window.location.origin;
       } catch { return true; }
     };
-
-    // 将远程图片切换为同源代理，避免 canvas 污染
     for (const img of imgs) {
       const src = img.getAttribute("src") || "";
       if (!src || src.startsWith("data:") || src.startsWith("blob:")) continue;
-      if (!/^https?:\/\//i.test(src)) continue;
-      if (sameOrigin(src)) continue;
-      originalSrc.push({ el: img, src });
-      const proxied = `/api/image-proxy?url=${encodeURIComponent(src)}`;
-      img.setAttribute("src", proxied);
+      if (!/^https?:\/\//i.test(src) || sameOrigin(src)) continue;
+      img.setAttribute("src", `/api/image-proxy?url=${encodeURIComponent(src)}`);
       img.removeAttribute("crossorigin");
     }
-
-    // 等待图片加载，最多等待 5 秒
     await waitForImages(imgs, 5000);
 
-    const cleanup = () => {
-      // 不需要恢复 clone 的 src，因为会整体移除
-      if (container.parentNode) container.parentNode.removeChild(container);
-    };
-    return { nodeForExport: clone, cleanup };
+    return { nodeForExport: clone, cleanup: () => container.remove() };
   }
 
   function waitForImages(images: HTMLImageElement[], timeout = 5000) {
@@ -262,6 +144,40 @@ export function ExportButton({
     });
   }
 
+  /**
+   * 构造第 pageIndex 页的“取景窗”：A4 大小、四周 10mm 留白的白色页面，
+   * 内部取景区裁出该页内容。与预览卡片使用同一套切分逻辑。
+   *
+   * 注意分两层：外层 holder 负责移出视口，内层 pageWindow 不带任何定位样式，
+   * 只截取 pageWindow。html-to-image 会复制被截节点的计算样式，若直接截带有
+   * position: fixed / left: -10000px 的节点，内容会被画到画布之外，得到空白图片。
+   */
+  function buildPageWindow(nodeForExport: HTMLElement, pagination: MeasuredPagination, pageIndex: number) {
+    const holder = document.createElement("div");
+    hideOffscreen(holder);
+    holder.className = "pdf-preview-mode";
+
+    const pageWindow = document.createElement("div");
+    pageWindow.style.width = `${nodeForExport.getBoundingClientRect().width}px`;
+    pageWindow.style.height = `${PAGE_HEIGHT_MM * MM_TO_PX}px`;
+    pageWindow.style.padding = `${PAGE_MARGIN_MM * MM_TO_PX}px 0`;
+    pageWindow.style.boxSizing = "border-box";
+    pageWindow.style.overflow = "hidden";
+    pageWindow.style.background = "#ffffff";
+
+    const viewport = document.createElement("div");
+    viewport.style.height = `${PAGE_CONTENT_HEIGHT_MM * MM_TO_PX}px`;
+    viewport.style.overflow = "hidden";
+    viewport.style.position = "relative";
+    pageWindow.appendChild(viewport);
+    holder.appendChild(pageWindow);
+    document.body.appendChild(holder);
+
+    mountPageClone(viewport, nodeForExport, pagination, pageIndex);
+
+    return { pageWindow, cleanup: () => holder.remove() };
+  }
+
   async function convertBlobToFormat(blob: Blob, mime: string): Promise<string | null> {
     try {
       if (!("createImageBitmap" in window)) return null;
@@ -280,6 +196,116 @@ export function ExportButton({
     }
   }
 
+  async function renderPageImage(
+    htmlToImage: typeof import("html-to-image"),
+    node: HTMLElement,
+    format: ImageFormat
+  ): Promise<string> {
+    const options: HtmlToImageOptions = {
+      quality: format === "jpg" ? 0.95 : 1,
+      pixelRatio: 2,
+      backgroundColor: "#ffffff",
+      cacheBust: true,
+      imagePlaceholder: IMAGE_PLACEHOLDER,
+      // 关闭字体内嵌，避免 html-to-image 解析字体时对 undefined 调用 trim 抛错
+      skipFonts: true,
+    };
+    switch (format) {
+      case "png":
+        return htmlToImage.toPng(node, options);
+      case "jpg":
+        return htmlToImage.toJpeg(node, options);
+      case "svg":
+        return htmlToImage.toSvg(node, options);
+      case "webp": {
+        // html-to-image 没有 toWebp：先生成位图，再用 canvas 转码；不支持时退回原始类型
+        const blob = await htmlToImage.toBlob(node, options);
+        if (!blob) throw new Error("生成 WEBP 失败");
+        return (await convertBlobToFormat(blob, "image/webp")) ?? URL.createObjectURL(blob);
+      }
+    }
+  }
+
+  function triggerDownload(url: string, filename: string) {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    if (url.startsWith("blob:")) setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
+  async function urlToBytes(url: string): Promise<Uint8Array> {
+    const blob = await (await fetch(url)).blob();
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (url.startsWith("blob:")) URL.revokeObjectURL(url);
+    return bytes;
+  }
+
+  /**
+   * 图片导出：与 PDF 使用同一套分页模型。
+   * 单页直接下载；多页时打包为一个 ZIP，避免浏览器拦截连续触发的多个下载。
+   */
+  const exportAsImage = async (format: ImageFormat) => {
+    setIsExporting(true);
+    try {
+      const { sourceEl, cleanup: cleanupPreview } = await renderOffscreenPreview();
+      let pageCount = 1;
+      try {
+        const { nodeForExport, cleanup: cleanupClone } = await prepareNodeForExport(sourceEl);
+        try {
+          const pagination = measurePagination(nodeForExport);
+          pageCount = pagination.pageCount;
+          const htmlToImage = await import("html-to-image");
+          const baseName = generatePdfFilename(resumeData.title).replace(/\.pdf$/i, "");
+
+          const pageUrls: string[] = [];
+          for (let i = 0; i < pageCount; i++) {
+            const { pageWindow, cleanup: cleanupWindow } = buildPageWindow(nodeForExport, pagination, i);
+            try {
+              pageUrls.push(await renderPageImage(htmlToImage, pageWindow, format));
+            } finally {
+              cleanupWindow();
+            }
+          }
+
+          if (pageUrls.length === 1) {
+            triggerDownload(pageUrls[0], `${baseName}.${format}`);
+          } else {
+            const entries: ZipEntry[] = [];
+            for (let i = 0; i < pageUrls.length; i++) {
+              entries.push({ name: `${baseName}-P${i + 1}.${format}`, data: await urlToBytes(pageUrls[i]) });
+            }
+            triggerDownload(URL.createObjectURL(createZip(entries)), `${baseName}.zip`);
+          }
+        } finally {
+          cleanupClone();
+        }
+      } finally {
+        cleanupPreview();
+      }
+
+      toast({
+        title: "导出成功",
+        description:
+          pageCount > 1
+            ? `简历共 ${pageCount} 页，已按页导出为 ${format.toUpperCase()} 并打包为 ZIP（P1 到 P${pageCount}）`
+            : `简历已导出为 ${format.toUpperCase()} 格式`,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : JSON.stringify(e || {});
+      console.error("导出图片失败:", msg);
+      toast({
+        title: "导出失败",
+        description: `导出图片时发生错误：${msg}`,
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const exportAsPDF = () => {
     const filename = generatePdfFilename(resumeData.title || "");
     const childWindow = window.open(`/pdf/preview/${filename}`, '_blank');
@@ -294,8 +320,10 @@ export function ExportButton({
     }
 
     const handleMessage = (event: MessageEvent) => {
-      if (event.source === childWindow && event.data.type === 'ready') {
-        childWindow.postMessage({ type: 'resumeData', data: resumeData }, '*');
+      // 只接受同源预览窗口的握手消息
+      if (event.origin !== window.location.origin) return;
+      if (event.source === childWindow && event.data?.type === 'ready') {
+        childWindow.postMessage({ type: 'resumeData', data: resumeData }, window.location.origin);
         window.removeEventListener('message', handleMessage);
       }
     };

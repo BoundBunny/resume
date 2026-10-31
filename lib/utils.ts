@@ -263,7 +263,7 @@ export function createDefaultResumeData(): ResumeData {
  */
 export function createNewModule(order: number): ResumeModule {
   return {
-    id: `module-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `module-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     title: "新模块",
     icon: undefined,
     order,
@@ -276,13 +276,14 @@ export function createNewModule(order: number): ResumeModule {
  */
 export function createNewPersonalInfoItem(): PersonalInfoItem {
   return {
-    id: `info-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `info-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     label: "新标签，如：电话、邮箱等",
     value: {
       content: "",
       type: "text",
     },
-    icon: "mdi:information",
+    // 预览统一按 SVG 片段渲染图标，这里直接给出 mdi:information 的路径
+    icon: "<path fill=\"currentColor\" d=\"M13,9H11V7H13M13,17H11V11H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z\"/>",
     order: 0,
   }
 }
@@ -300,7 +301,7 @@ export function createNewJobIntentionItem(type: 'workYears' | 'position' | 'city
   }
 
   return {
-    id: `jii-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    id: `jii-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
     label: labels[type],
     value: '',
     order,
@@ -403,6 +404,54 @@ export function importFromMagicyanFile(fileContent: string): ResumeData {
     createdAt: data.createdAt || now,
     updatedAt: now,
   }
+}
+
+/** 允许出现在图标 SVG 片段中的绘图标签 */
+const SVG_ALLOWED_TAGS = new Set([
+  "path", "g", "circle", "ellipse", "rect", "line", "polyline", "polygon",
+  "defs", "lineargradient", "radialgradient", "stop", "clippath", "mask",
+  "use", "symbol", "title", "desc",
+])
+
+/**
+ * 清洗图标 SVG 片段。图标可能来自导入的 JSON 或第三方接口，
+ * 这里移除脚本、事件属性与外部引用，只保留白名单内的绘图标签，再交给 dangerouslySetInnerHTML。
+ */
+export function sanitizeSvgIcon(icon: string | undefined | null): string {
+  if (!icon || typeof icon !== "string") return ""
+  let s = icon
+  s = s.replace(/<!--[\s\S]*?-->/g, "")
+  s = s.replace(/<!\[CDATA\[[\s\S]*?\]\]>/g, "")
+  // 带内容的危险容器整体移除
+  s = s.replace(
+    /<\s*(script|style|foreignObject|iframe|object|embed|animate|set|animateTransform|animateMotion|a)\b[^>]*>[\s\S]*?<\/\s*\1\s*>/gi,
+    ""
+  )
+  // 事件处理属性
+  s = s.replace(/\s+on[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+  // 外部引用只允许 # 开头的文档内引用
+  s = s.replace(/\s+(xlink:href|href|src)\s*=\s*("([^"]*)"|'([^']*)')/gi, (match, _attr, _quoted, v1, v2) => {
+    const value = String(v1 ?? v2 ?? "").trim()
+    return value.startsWith("#") ? match : ""
+  })
+  // 非白名单标签（含自闭合）直接移除
+  s = s.replace(/<\/?\s*([a-zA-Z][\w:-]*)\b[^>]*>/g, (match, tag) =>
+    SVG_ALLOWED_TAGS.has(String(tag).toLowerCase()) ? match : ""
+  )
+  return s.trim()
+}
+
+/**
+ * 清洗个人信息中的链接地址：只允许 http(s)、mailto、tel；
+ * 形如 github.com/xxx 的裸域名自动补全 https；其余返回 undefined，由调用方退回纯文本显示。
+ */
+export function sanitizeHref(url: string | undefined | null): string | undefined {
+  if (!url) return undefined
+  const trimmed = url.trim()
+  if (!trimmed) return undefined
+  if (/^(https?:\/\/|mailto:|tel:)/i.test(trimmed)) return trimmed
+  if (/^[\w.-]+\.[a-z]{2,}([/?#].*)?$/i.test(trimmed)) return `https://${trimmed}`
+  return undefined
 }
 
 /**

@@ -1,49 +1,45 @@
-export const runtime = "edge";
-export const dynamic = "force-dynamic";
+import { fetchRemoteResource, parsePublicHttpUrl } from "@/lib/server-request"
+
+export const runtime = "edge"
+export const dynamic = "force-dynamic"
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 function badRequest(msg: string, status = 400) {
   return new Response(JSON.stringify({ error: msg }), {
     status,
     headers: { "content-type": "application/json" },
-  });
+  })
 }
 
+/**
+ * 远程图片代理：导出图片时用于规避跨域与画布污染。
+ * 仅允许公网 http(s) 地址、仅转发 image/* 响应、限制体积，并逐跳校验重定向目标。
+ */
 export async function GET(req: Request) {
   try {
-    const { searchParams } = new URL(req.url);
-    const raw = searchParams.get("url") || "";
-    if (!raw) return badRequest("Missing url");
+    const raw = new URL(req.url).searchParams.get("url") || ""
+    if (!raw) return badRequest("Missing url")
+    if (!parsePublicHttpUrl(raw)) return badRequest("URL not allowed")
 
-    let target: URL;
-    try { target = new URL(raw); } catch { return badRequest("Invalid url"); }
-    if (!/^https?:$/i.test(target.protocol)) return badRequest("Only http/https allowed");
+    const resource = await fetchRemoteResource(raw, {
+      allowedContentType: /^image\//,
+      maxBytes: MAX_IMAGE_BYTES,
+    })
+    if (!resource) return badRequest("Upstream fetch failed or not an image", 502)
 
-    // Basic SSRF protection: block localhost and private ranges
-    const hostname = target.hostname.toLowerCase();
-    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1") {
-      return badRequest("Blocked host");
-    }
-
-    const res = await fetch(target.toString(), {
+    return new Response(resource.bytes, {
+      status: 200,
       headers: {
-        // Some servers require a UA to return image bytes
-        "user-agent": "Mozilla/5.0 (compatible; ResumeExporter/1.0)",
-        "accept": "image/avif,image/webp,image/apng,image/*;q=0.8,*/*;q=0.5",
+        "content-type": resource.contentType,
+        "content-disposition": "inline",
+        "x-content-type-options": "nosniff",
+        // 导出过程中可能重复请求同一图片，允许短暂缓存
+        "cache-control": "public, max-age=60",
       },
-    });
-    if (!res.ok || !res.body) {
-      return badRequest(`Upstream fetch failed: ${res.status} ${res.statusText}`, 502);
-    }
-    const ct = res.headers.get("content-type") || "application/octet-stream";
-    const headers = new Headers({
-      "content-type": ct,
-      // Short cache to reduce repeated fetches during export
-      "cache-control": "public, max-age=60",
-    });
-    return new Response(res.body, { status: 200, headers });
+    })
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e || "");
-    return badRequest(msg, 500);
+    const msg = e instanceof Error ? e.message : String(e || "")
+    return badRequest(msg, 500)
   }
 }
-

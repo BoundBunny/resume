@@ -12,7 +12,7 @@ import { Icon } from "@iconify/react"
 import { useToast } from "@/hooks/use-toast"
 import type { StoredResume } from "@/types/resume"
 import { importFromMagicyanFile } from "@/lib/utils"
-import { StorageError, createEntryFromData, deleteResumes, getAllResumes, loadDefaultTemplate, loadExampleTemplate } from "@/lib/storage"
+import { StorageError, NEW_RESUME_PREFETCH_KEY, createEntryFromData, deleteResumes, getAllResumes, loadDefaultTemplate, loadExampleTemplate } from "@/lib/storage"
 import { createDefaultResumeData } from "@/lib/utils"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import ExportButton from "@/components/export-button"
@@ -114,7 +114,7 @@ export default function UserCenter() {
       const tpl = type === "example" ? await loadExampleTemplate() : await loadDefaultTemplate()
       const data = tpl ?? createDefaultResumeData()
       if (typeof window !== "undefined") {
-        try { sessionStorage.setItem("new-edit-initial-data", JSON.stringify(data)) } catch { }
+        try { sessionStorage.setItem(NEW_RESUME_PREFETCH_KEY, JSON.stringify(data)) } catch { }
       }
     } finally {
       router.push(`/edit/new`)
@@ -264,7 +264,7 @@ export default function UserCenter() {
                   <Button
                     variant="outline"
                     className="gap-2 shrink-0"
-                    onClick={() => window.open("https://github.com/wzdnzd/resume", "_blank", "noopener,noreferrer")}
+                    onClick={() => window.open("https://github.com/BoundBunny/resume", "_blank", "noopener,noreferrer")}
                   >
                     <Icon icon="mdi:github" className="w-4 h-4" /> GitHub
                   </Button>

@@ -16,10 +16,11 @@
     overflow: visible !important;
   }
 
-  /* 页面设置 */
+  /* 页面设置：每页四周统一留白 10mm，与屏幕上的分页预览一致。
+     浏览器打印时若出现页眉页脚，请在打印对话框中关闭；服务端生成的 PDF 不受影响 */
   @page {
     size: A4;
-    margin: 1cm;
+    margin: 10mm;
   }
 
   /* 颜色与背景：确保浏览器打印保留背景色与准确渲染 */
@@ -34,7 +35,7 @@
     display: none !important;
   }
 
-  /* 确保简历内容占满整页 */
+  /* 确保简历内容占满整页；留白由 @page 边距提供 */
   .resume-content {
     width: 100% !important;
     max-width: none !important;
@@ -55,6 +56,20 @@
     border: none !important;
   }
 
+  /* 分页预览：打印时隐藏页面卡片，把离屏的测量源恢复为正常文档流 */
+  .paginated-pages {
+    display: none !important;
+  }
+
+  .paginated-source {
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
+    width: auto !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+
   /* 优化打印时的字体和间距 */
   body {
     font-size: 11pt !important;
@@ -73,6 +88,17 @@
     margin-bottom: 12pt !important;
     page-break-inside: auto;
     break-inside: auto;
+  }
+
+  /* 模块级分页控制：由简历数据中的开关决定 */
+  .resume-module.page-break-before {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+
+  .resume-module.keep-together {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
   }
 
   /* 标题样式优化 */

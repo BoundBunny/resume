@@ -38,6 +38,8 @@ function PDFPreviewContent() {
     } catch { }
 
     const handleMessage = (event: MessageEvent) => {
+      // 只接受同源页面投递的简历数据
+      if (event.origin !== window.location.origin) return;
       const payload = (event as unknown as { data?: { type?: string; data?: ResumeData } }).data;
       if (payload?.type === 'resumeData' && payload.data) {
         setResumeData(payload.data);
@@ -46,7 +48,7 @@ function PDFPreviewContent() {
     };
     window.addEventListener('message', handleMessage);
     if (window.opener) {
-      window.opener.postMessage({ type: 'ready' }, '*');
+      window.opener.postMessage({ type: 'ready' }, window.location.origin);
     }
     return () => window.removeEventListener('message', handleMessage);
   }, [])

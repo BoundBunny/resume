@@ -16,11 +16,13 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Icon } from "@iconify/react"
 import type { ResumeModule, ModuleContentRow, ModuleContentElement } from "@/types/resume"
+import { sanitizeSvgIcon } from "@/lib/utils"
 import IconPicker from "./icon-picker"
 import FloatingActionBar from "./floating-action-bar"
 import RichTextInput from "./rich-text-input"
 import TagInput from "./tag-input"
 import { DragDropContext, Droppable, Draggable, DropResult, DraggableProvidedDragHandleProps } from "@hello-pangea/dnd"
+import { Switch } from "@/components/ui/switch"
 
 interface ModuleEditorProps {
   modules: ResumeModule[]
@@ -30,7 +32,9 @@ interface ModuleEditorProps {
 /**
  * 生成唯一ID
  */
-const generateId = () => `id-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+const generateId = () => `id-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+
+const byOrder = <T extends { order: number }>(a: T, b: T) => a.order - b.order
 
 /**
  * 创建新模块
@@ -130,15 +134,12 @@ export default function ModuleEditor({ modules, onUpdate }: ModuleEditorProps) {
     if (!result.destination) return
     if (result.source.index === result.destination.index) return
 
-    const updatedModules = [...modules]
-    const [movedModule] = updatedModules.splice(result.source.index, 1)
-    updatedModules.splice(result.destination.index, 0, movedModule)
+    // 拖拽索引基于排序后的列表：先排序再移动，最后重算 order，不修改原对象
+    const sorted = [...modules].sort(byOrder)
+    const [movedModule] = sorted.splice(result.source.index, 1)
+    sorted.splice(result.destination.index, 0, movedModule)
 
-    updatedModules.forEach((module, index) => {
-      module.order = index
-    })
-
-    onUpdate(updatedModules)
+    onUpdate(sorted.map((module, index) => ({ ...module, order: index })))
   }
 
   /**
@@ -173,8 +174,8 @@ export default function ModuleEditor({ modules, onUpdate }: ModuleEditorProps) {
         <Droppable droppableId="modules-list">
           {(provided) => (
             <div className="space-y-3" {...provided.droppableProps} ref={provided.innerRef}>
-              {modules
-                .sort((a, b) => a.order - b.order)
+              {[...modules]
+                .sort(byOrder)
                 .map((module, index) => (
                   <Draggable key={module.id} draggableId={module.id} index={index}>
                     {(provided, snapshot) => (
@@ -239,29 +240,23 @@ function ModuleItem({
    * 添加新行
    */
   const addRow = (columns: 1 | 2 | 3 | 4, afterRowId?: string) => {
-    const rows = [...module.rows]
+    const rows = [...module.rows].sort(byOrder)
     const afterIndex = afterRowId ? rows.findIndex((r) => r.id === afterRowId) : -1
     const insertIndex = afterIndex >= 0 ? afterIndex + 1 : rows.length
-    const newRow = createNewRow(columns, insertIndex)
-    rows.splice(insertIndex, 0, newRow)
-    // 重新计算 order，保证排序正确
-    rows.forEach((r, i) => {
-      r.order = i
-    })
-    onUpdate({ rows })
+    rows.splice(insertIndex, 0, createNewRow(columns, insertIndex))
+    // 重新计算 order，保证排序正确（生成新对象，不修改原行）
+    onUpdate({ rows: rows.map((r, i) => ({ ...r, order: i })) })
   }
 
   /**
    * 添加标签行
    */
   const addTagsRow = (afterRowId?: string) => {
-    const rows = [...module.rows]
+    const rows = [...module.rows].sort(byOrder)
     const afterIndex = afterRowId ? rows.findIndex((r) => r.id === afterRowId) : -1
     const insertIndex = afterIndex >= 0 ? afterIndex + 1 : rows.length
-    const newRow = createNewTagsRow(insertIndex)
-    rows.splice(insertIndex, 0, newRow)
-    rows.forEach((r, i) => { r.order = i })
-    onUpdate({ rows })
+    rows.splice(insertIndex, 0, createNewTagsRow(insertIndex))
+    onUpdate({ rows: rows.map((r, i) => ({ ...r, order: i })) })
   }
 
   /**
@@ -310,7 +305,7 @@ function ModuleItem({
         >
           <div className="flex items-center gap-3">
             {module.icon ? (
-              <svg width={16} height={16} viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: module.icon }} />
+              <svg width={16} height={16} viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(module.icon) }} />
             ) : (
               <div className="w-4 h-4 border border-dashed border-gray-400 rounded-sm" />
             )}
@@ -356,7 +351,7 @@ function ModuleItem({
                   <DialogTrigger asChild>
                     <Button variant="outline" className="w-full justify-start gap-2 bg-transparent">
                       {module.icon ? (
-                        <svg width={16} height={16} viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: module.icon }} />
+                        <svg width={16} height={16} viewBox="0 0 24 24" dangerouslySetInnerHTML={{ __html: sanitizeSvgIcon(module.icon) }} />
                       ) : (
                         <div className="w-4 h-4 border border-dashed border-gray-400 rounded-sm" />
                       )}
@@ -373,13 +368,35 @@ function ModuleItem({
               </div>
             </div>
 
+            {/* 分页控制：模块级 */}
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  checked={!!module.pageBreakBefore}
+                  onCheckedChange={(checked) => onUpdate({ pageBreakBefore: checked })}
+                />
+                从新一页开始
+              </label>
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Switch
+                  checked={!!module.keepTogether}
+                  onCheckedChange={(checked) => onUpdate({ keepTogether: checked })}
+                />
+                不跨页拆分
+              </label>
+              <span className="text-xs text-muted-foreground/70">
+                预览、PDF 与图片导出按同一规则分页
+              </span>
+            </div>
+
             {/* 内容行列表 */}
             <div className="space-y-0.5">
               {module.rows.length === 0 ? (
                 <EmptyRowPlaceholder onAddRow={addRow} onAddTagsRow={() => addTagsRow()} />
               ) : (
                 module.rows
-                  .sort((a, b) => a.order - b.order)
+                  .slice()
+                  .sort(byOrder)
                   .map((row) => (
                     <ContentRowEditor
                       key={row.id}

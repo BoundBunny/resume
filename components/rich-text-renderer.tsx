@@ -55,6 +55,26 @@ const getDefaultContent = (): JSONContent => ({
   ],
 })
 
+/** 段落没有任何可见字符时视为空段落（仅含换行或空白文本） */
+function isEmptyParagraph(node: JSONContent): boolean {
+  if (node.type !== 'paragraph') return false
+  const children = node.content ?? []
+  return children.every(
+    (child) => child.type === 'hardBreak' || (child.type === 'text' && !(child.text ?? '').trim())
+  )
+}
+
+/**
+ * 去掉文档末尾的空段落。编辑时删除文字常会留下空段落，它们带有行高与段后距，
+ * 在预览、打印与导出中会凭空占位，甚至把内容推到新的一页。编辑器中的原始内容不受影响。
+ */
+function trimTrailingEmptyParagraphs(doc: JSONContent): JSONContent {
+  const content = doc.content ?? []
+  let end = content.length
+  while (end > 1 && isEmptyParagraph(content[end - 1])) end--
+  return end === content.length ? doc : { ...doc, content: content.slice(0, end) }
+}
+
 /**
  * Read-only Tiptap renderer for preview
  */
@@ -90,7 +110,7 @@ export default function RichTextRenderer({
         types: ['paragraph'],
       }),
     ],
-    content: content || getDefaultContent(),
+    content: trimTrailingEmptyParagraphs(content || getDefaultContent()),
     editable: false,
     editorProps: {
       attributes: {
@@ -103,7 +123,7 @@ export default function RichTextRenderer({
   useEffect(() => {
     if (!editor) return
 
-    const newContent = content || getDefaultContent()
+    const newContent = trimTrailingEmptyParagraphs(content || getDefaultContent())
     const currentContent = editor.getJSON()
 
     // Only update if content actually changed
